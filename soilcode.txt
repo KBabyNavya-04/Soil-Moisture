@@ -1,0 +1,96 @@
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+
+// ---------- USER SETTINGS ----------
+#define WIFI_SSID     "Mamatha"
+#define WIFI_PASSWORD "mamatha123"
+
+#define API_KEY       "AIzaSyDD0oSM_wqSgAxqn9Qr3Bre4433AmloJmc"
+#define DATABASE_URL  "https://esp32-6ea6c-default-rtdb.asia-southeast1.firebasedatabase.app/"  // with trailing /
+
+#define USER_EMAIL    "229X1A0419@gprec.ac.in"   // optional: only if you need user auth
+#define USER_PASSWORD "Mamatha@123"          // optional
+// ---------- HARDWARE  ---------------
+const uint8_t SOIL_PIN = 33;      // on ESP8266: 0-1023 counts (0-1 V unless scaled)
+const uint32_t SAMPLE_PERIOD_MS = 5000;  
+// -----------------------------------
+
+// Firebase objects
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+unsigned long lastSent = 0;
+
+void connectWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print('.');
+    delay(500);
+  }
+  Serial.println(" ✓");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void setupFirebase() {
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+
+  // Optional email/password authentication
+  auth.user.email = USER_EMAIL;
+  auth.user.password = USER_PASSWORD;
+  // Reconnect Wi-Fi automatically
+//  config.wifi_clear_auto_reconnect = false;
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  connectWiFi();
+  setupFirebase();
+
+  // Calibrate ADC range if you use an external divider → comment next line
+  //analogReference(AR_DEFAULT); // 1.0 V on NodeMCU; comment out for boards with 3.3 V ADC
+}
+
+void loop() {
+  unsigned long now = millis();
+
+  if (now - lastSent >= SAMPLE_PERIOD_MS || lastSent == 0) {
+    int   raw     = analogRead(SOIL_PIN);           // 0–4095
+    float percent = map(raw, 4095, 0, 0, 100);      // dry=0 %, wet=100 %
+
+    Serial.printf("Soil raw=%d  moisture=%.1f%%\n", raw, percent);
+
+    // --- Realtime-DB node paths ------------------------------------
+    const char* pathRaw   = "/sensors/soilRaw";       // ADC counts
+    const char* pathMoist = "/sensors/soilMoisture";  // %
+    const char* timePath  = "/sensors/timestamp";     // Unix time
+    // ---------------------------------------------------------------
+
+    // Upload raw value first (order doesn't really matter)
+    Firebase.RTDB.setInt  (&fbdo, pathRaw,   raw);
+
+    // Upload percentage and check for success
+    if (Firebase.RTDB.setFloat(&fbdo, pathMoist, percent)) {
+      Serial.println("✓ Uploaded moisture");
+    } else {
+      Serial.printf("✗ Upload failed: %s\n", fbdo.errorReason().c_str());
+    }
+
+    // Upload timestamp (optional)
+    Firebase.RTDB.setInt(&fbdo, timePath, (int)Firebase.getCurrentTime());
+
+    lastSent = now;
+  }
+
+  // Keep the Firebase connection alive
+  Firebase.RTDB.readStream(&fbdo);
+}
