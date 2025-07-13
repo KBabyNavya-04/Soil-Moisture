@@ -5,7 +5,7 @@
 #define WIFI_SSID     "Mamatha"
 #define WIFI_PASSWORD "mamatha123"
 
-#define API_KEY       "AIzaSyDD0oSM_wqSgAxqn9Qr3Bre4433AmloJmc"
+#define API_KEY       
 #define DATABASE_URL  "https://esp32-6ea6c-default-rtdb.asia-southeast1.firebasedatabase.app/"  // with trailing /
 
 #define USER_EMAIL    "229X1A0419@gprec.ac.in"   // optional: only if you need user auth
